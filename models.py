@@ -1,0 +1,93 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.models as models
+
+class Vgg16(nn.Module):
+    def __init__(self):
+        super(Vgg16, self).__init__()
+        self.conv1_1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1)
+        self.conv1_2 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
+
+        self.conv2_1 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.conv2_2 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
+
+        self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
+        self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+
+        self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
+        self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.conv4_3 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+
+        self.conv5_1 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.conv5_2 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.conv5_3 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, X):
+        h = F.relu(self.conv1_1(X), inplace=True)
+        h = F.relu(self.conv1_2(h), inplace=True)
+        # relu1_2 = h
+        h = F.max_pool2d(h, kernel_size=2, stride=2)
+
+        h = F.relu(self.conv2_1(h), inplace=True)
+        h = F.relu(self.conv2_2(h), inplace=True)
+        # relu2_2 = h
+        h = F.max_pool2d(h, kernel_size=2, stride=2)
+
+        h = F.relu(self.conv3_1(h), inplace=True)
+        h = F.relu(self.conv3_2(h), inplace=True)
+        h = F.relu(self.conv3_3(h), inplace=True)
+        # relu3_3 = h
+        h = F.max_pool2d(h, kernel_size=2, stride=2)
+
+        h = F.relu(self.conv4_1(h), inplace=True)
+        h = F.relu(self.conv4_2(h), inplace=True)
+        h = F.relu(self.conv4_3(h), inplace=True)
+        # relu4_3 = h
+        h = F.max_pool2d(h, kernel_size=2, stride=2)
+
+        h = F.relu(self.conv5_1(h), inplace=True)
+        h = F.relu(self.conv5_2(h), inplace=True)
+        h = F.relu(self.conv5_3(h), inplace=True)
+        # relu5_3 = h
+        h = F.max_pool2d(h, kernel_size=2, stride=2)
+        
+
+        return h
+        # return [relu1_2, relu2_2, relu3_3, relu4_3]
+
+
+class IMtoPC(nn.Module):
+
+    def __init__(self, latent_size=128, point_size=2048):
+        super(IMtoPC, self).__init__()
+        
+        self.latent_size = latent_size
+        self.point_size = point_size
+        
+        #encoder
+        self.vgg = Vgg16()
+        self.fc1 = nn.Linear(7*7*512,self.latent_size)
+        
+        #decoder
+        self.dec1 = nn.Linear(self.latent_size, self.point_size//2)
+        self.dec2 = nn.Linear(self.point_size//2, self.point_size)
+        self.dec3 = nn.Linear(self.point_size, self.point_size*3)
+        
+    def encoder(self, x):
+        x = self.vgg(x)
+        x = self.fc1( x.view(x.shape[0], -1) )
+        return x
+        
+    def decoder(self, x):
+        x = F.relu(self.dec1(x))
+        x = F.relu(self.dec2(x))
+        x = self.dec3(x)
+        x = torch.tanh(x)
+        return x.view(x.shape[0], self.point_size, 3)
+    
+    def forward(self, x):
+        code = self.encoder( x.permute(0,3,1,2).contiguous()  )
+        pc = self.decoder(code)
+        return pc
